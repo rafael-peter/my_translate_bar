@@ -1,6 +1,6 @@
 import XCTest
 import AppKit
-@testable import TranslateBar
+@testable import TranslateBarKit
 
 @MainActor
 final class ShortcutStoreTests: XCTestCase {

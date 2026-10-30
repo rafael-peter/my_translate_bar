@@ -16,6 +16,10 @@ Com Xcode instalado:
 
 Compila em modo otimizado, gera `dist/TranslateBar.app` e abre o popover. O botão **Run** do Codex usa esse script. O aplicativo original em `/Applications/Translate Bar.app` não é alterado. Para depurar, use `./script/build_and_run.sh --debug`; para executar os testes, `swift test`.
 
+O executável SwiftPM incorpora o identificador `com.mytranslatebar.app` a partir de `Resources/AppInfo.plist`; o script usa o mesmo arquivo no bundle. Para validar integrações do macOS, prefira executar o `.app` pelo script. No Xcode, também é possível depurar esse processo usando **Debug > Attach to Process > TranslateBar**.
+
+Os logs `com.apple.linkd.autoShortcut / 4097` indicam falha de comunicação com o serviço de App Intents do macOS. O projeto não registra App Intents próprios; não suprime esses logs nem reinicia serviços do sistema. Se persistirem no app empacotado, precisam ser investigados no ambiente do macOS. Para localizar avisos de layout, use o breakpoint simbólico `_NSDetectedLayoutRecursion`. Na validação de 30/10/2026, o aviso restante foi capturado nesse breakpoint: a pilha passa por `NSStatusItem._setDisplayIdentifier`, `NSSceneStatusItem` e o layout interno do AppKit, durante a conexão da barra de menus. A medição do editor foi isolada do layout da view, mas isso não elimina esse aviso interno do sistema. O popover confirmou sua abertura com `Popover presented`, e o depurador confirmou `Bundle.main.bundleIdentifier = com.mytranslatebar.app`. Os 25 testes existentes e os 3 novos testes de medição passaram.
+
 ## Usar
 
 - Digite: a tradução começa após 350 ms sem alterações.

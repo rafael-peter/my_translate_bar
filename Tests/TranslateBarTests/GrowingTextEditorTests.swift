@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 import XCTest
-@testable import TranslateBar
+@testable import TranslateBarKit
 
 @MainActor
 final class GrowingTextEditorTests: XCTestCase {

@@ -21,7 +21,6 @@ struct GrowingTextEditor: View {
     /// carrying an older token are discarded by the coordinator.
     let replacementID: Int
     var onPaste: (String) -> Void
-    @State private var measuredHeight: CGFloat = 65
 
     init(
         text: Binding<String>,
@@ -43,10 +42,8 @@ struct GrowingTextEditor: View {
             focusRequestID: focusRequestID,
             replacementID: replacementID,
             replacementOwnerID: replacementOwnerID,
-            onPaste: onPaste,
-            measuredHeight: $measuredHeight
+            onPaste: onPaste
         )
-        .frame(height: min(max(measuredHeight, 65), 200))
         .clipped()
     }
 }
@@ -57,7 +54,6 @@ private struct GrowingTextEditorRepresentable: NSViewRepresentable {
     let replacementID: Int
     let replacementOwnerID: UUID
     var onPaste: (String) -> Void
-    @Binding var measuredHeight: CGFloat
 
     private let minimumHeight: CGFloat = 65
     private let maximumHeight: CGFloat = 200
@@ -67,11 +63,11 @@ private struct GrowingTextEditorRepresentable: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> NSScrollView {
-        let scrollView = NSScrollView()
+        let scrollView = EditorScrollView()
         scrollView.drawsBackground = false
         scrollView.borderType = .noBorder
         scrollView.hasHorizontalScroller = false
-        scrollView.hasVerticalScroller = false
+        scrollView.hasVerticalScroller = true
         scrollView.autohidesScrollers = true
         scrollView.scrollerStyle = .overlay
         scrollView.contentView.postsBoundsChangedNotifications = true
@@ -110,8 +106,7 @@ private struct GrowingTextEditorRepresentable: NSViewRepresentable {
         context.coordinator.lastReplacementID = replacementID
         context.coordinator.replacementOwnerID = replacementOwnerID
         context.coordinator.observeReplacement(for: textView)
-        context.coordinator.updateScrollState(for: textView, in: scrollView)
-        context.coordinator.reportHeight(for: textView, in: scrollView)
+        scrollView.scheduleDocumentLayout()
         return scrollView
     }
 
@@ -137,8 +132,7 @@ private struct GrowingTextEditorRepresentable: NSViewRepresentable {
             let safeLocation = min(selectedRange.location, textView.string.utf16.count)
             textView.setSelectedRange(NSRange(location: safeLocation, length: 0))
         }
-        context.coordinator.updateScrollState(for: textView, in: scrollView)
-        context.coordinator.reportHeight(for: textView, in: scrollView)
+        (scrollView as? EditorScrollView)?.scheduleDocumentLayout()
 
         guard context.coordinator.lastFocusRequestID != focusRequestID else { return }
         context.coordinator.lastFocusRequestID = focusRequestID
@@ -148,36 +142,17 @@ private struct GrowingTextEditorRepresentable: NSViewRepresentable {
         }
     }
 
-    func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSScrollView, context: Context) -> CGSize {
+    // The requirement returns `CGSize?`; a non-optional overload is never
+    // called and SwiftUI collapses the scroll view to zero height.
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSScrollView, context: Context) -> CGSize? {
         guard let textView = nsView.documentView as? NSTextView else {
             return CGSize(width: proposal.width ?? 320, height: minimumHeight)
         }
 
-        let width = max(1, proposal.width ?? 320)
-        let contentWidth = max(1, width - textView.textContainerInset.width * 2)
-        textView.textContainer?.containerSize = NSSize(width: contentWidth, height: .greatestFiniteMagnitude)
-        guard let container = textView.textContainer, let layoutManager = textView.layoutManager else {
-            return CGSize(width: width, height: minimumHeight)
-        }
-        layoutManager.ensureLayout(for: container)
-        let documentHeight = max(
-            layoutManager.usedRect(for: container).height + textView.textContainerInset.height * 2,
-            minimumHeight
-        )
-        textView.frame = NSRect(x: 0, y: 0, width: width, height: ceil(documentHeight))
-        let height = min(documentHeight, maximumHeight)
-        reportHeight(height)
-        return CGSize(width: width, height: ceil(height))
-    }
-
-    private func reportHeight(_ height: CGFloat) {
-        let clamped = min(max(ceil(height), minimumHeight), maximumHeight)
-        guard abs(measuredHeight - clamped) > 0.5 else { return }
-        DispatchQueue.main.async {
-            if abs(self.measuredHeight - clamped) > 0.5 {
-                self.measuredHeight = clamped
-            }
-        }
+        let proposedWidth = proposal.width ?? 320
+        let width = proposedWidth.isFinite ? max(1, proposedWidth) : 320
+        let height = EditorTextMeasurement.documentHeight(for: textView, width: width)
+        return CGSize(width: width, height: min(max(height, minimumHeight), maximumHeight))
     }
 
     @MainActor
@@ -196,7 +171,7 @@ private struct GrowingTextEditorRepresentable: NSViewRepresentable {
             guard textView.string != parent.text else { return }
             parent.text = textView.string
             if let scrollView = textView.enclosingScrollView {
-                updateScrollState(for: textView, in: scrollView)
+                (scrollView as? EditorScrollView)?.scheduleDocumentLayout()
             }
         }
 
@@ -241,35 +216,54 @@ private struct GrowingTextEditorRepresentable: NSViewRepresentable {
             textView.replaceDocument(with: text)
         }
 
-        func updateScrollState(for textView: NSTextView, in scrollView: NSScrollView) {
-            let contentHeight = measuredHeight(for: textView)
-            let shouldScroll = contentHeight > 200
-            scrollView.hasVerticalScroller = shouldScroll
-            scrollView.verticalScrollElasticity = .allowed
-            // Keep the document resizable even while it is shorter than the
-            // viewport. Turning this off for short text makes a later long
-            // paste retain a stale document frame and prevents scrolling.
-            textView.isVerticallyResizable = true
-            textView.frame.size.height = max(contentHeight, 1)
-        }
+    }
+}
 
-        func reportHeight(for textView: NSTextView, in scrollView: NSScrollView) {
-            let contentHeight = measuredHeight(for: textView)
-            let clamped = min(max(ceil(contentHeight), 65), 200)
-            DispatchQueue.main.async { [weak self] in
-                guard let self, abs(self.parent.measuredHeight - clamped) > 0.5 else { return }
-                self.parent.measuredHeight = clamped
+/// Measure a detached text layout: SwiftUI can propose several widths in one
+/// pass, so measuring must never resize the live editor or its text container.
+@MainActor
+enum EditorTextMeasurement {
+    static func documentHeight(for textView: NSTextView, width: CGFloat) -> CGFloat {
+        let storage = NSTextStorage(attributedString: textView.attributedString())
+        let manager = NSLayoutManager()
+        let container = NSTextContainer(size: NSSize(
+            width: max(1, width - textView.textContainerInset.width * 2),
+            height: .greatestFiniteMagnitude
+        ))
+        container.lineFragmentPadding = textView.textContainer?.lineFragmentPadding ?? 0
+        storage.addLayoutManager(manager)
+        manager.addTextContainer(container)
+        manager.ensureLayout(for: container)
+        let textHeight = max(manager.usedRect(for: container).maxY, manager.extraLineFragmentRect.maxY)
+        return max(65, ceil(textHeight + textView.textContainerInset.height * 2))
+    }
+}
+
+private final class EditorScrollView: NSScrollView {
+    private var documentLayoutScheduled = false
+
+    override func layout() {
+        super.layout()
+        scheduleDocumentLayout()
+    }
+
+    func scheduleDocumentLayout() {
+        guard !documentLayoutScheduled else { return }
+        documentLayoutScheduled = true
+        // Resize only after AppKit/SwiftUI have finished their current layout.
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.documentLayoutScheduled = false
+            guard let editor = self.documentView as? NSTextView,
+                  self.contentSize.width > 0 else { return }
+            let size = NSSize(
+                width: self.contentSize.width,
+                height: EditorTextMeasurement.documentHeight(for: editor, width: self.contentSize.width)
+            )
+            if editor.frame.size != size {
+                editor.setFrameSize(size)
             }
         }
-
-        private func measuredHeight(for textView: NSTextView) -> CGFloat {
-            guard let container = textView.textContainer, let layoutManager = textView.layoutManager else { return 65 }
-            let width = max(1, textView.bounds.width - textView.textContainerInset.width * 2)
-            container.containerSize = NSSize(width: width, height: .greatestFiniteMagnitude)
-            layoutManager.ensureLayout(for: container)
-            return layoutManager.usedRect(for: container).height + textView.textContainerInset.height * 2
-        }
-
     }
 }
 

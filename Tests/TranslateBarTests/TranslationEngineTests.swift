@@ -1,5 +1,5 @@
 import XCTest
-@testable import TranslateBar
+@testable import TranslateBarKit
 
 final class TranslationEngineTests: XCTestCase {
     func testDictionaryIsDirectionalAndAccentsArePreserved() async throws {

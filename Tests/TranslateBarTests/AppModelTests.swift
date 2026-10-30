@@ -1,5 +1,5 @@
 import XCTest
-@testable import TranslateBar
+@testable import TranslateBarKit
 
 @MainActor
 final class AppModelTests: XCTestCase {

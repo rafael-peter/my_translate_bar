@@ -1,5 +1,5 @@
 import XCTest
-@testable import TranslateBar
+@testable import TranslateBarKit
 
 final class LanguageDirectionTests: XCTestCase {
     func testDetectsEnglishAndPortugueseSentences() {

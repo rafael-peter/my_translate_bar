@@ -18,9 +18,9 @@ extension View {
     @ViewBuilder
     func nativeGlassButtonStyle() -> some View {
         if #available(macOS 26.0, *) {
-            buttonStyle(.glass)
+            self.buttonStyle(.glass)
         } else {
-            buttonStyle(.bordered)
+            self.buttonStyle(.bordered)
         }
     }
 }
@@ -34,7 +34,7 @@ struct NativeIconButton: View {
         Button(action: action) {
             Label(title, systemImage: systemImage)
                 .labelStyle(.iconOnly)
-                .frame(width: 18, height: 20)
+                .padding(2.7)
         }
         .nativeGlassButtonStyle()
         .buttonBorderShape(.circle)

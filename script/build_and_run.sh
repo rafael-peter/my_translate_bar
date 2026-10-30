@@ -4,7 +4,6 @@ set -euo pipefail
 MODE="${1:-run}"
 APP_NAME="TranslateBar"
 BUNDLE_ID="com.mytranslatebar.app"
-MIN_SYSTEM_VERSION="15.0"
 BUILD_CONFIGURATION="${BUILD_CONFIGURATION:-release}"
 # Supply an existing Apple Development / Developer ID identity for permissions
 # that survive code changes. The default remains local ad-hoc signing.
@@ -33,22 +32,7 @@ for bundle in "$BUILD_DIR"/*.bundle; do
   [ -d "$bundle" ] || continue
   cp -R "$bundle" "$APP_CONTENTS/Resources/"
 done
-cat > "$APP_CONTENTS/Info.plist" <<PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-<key>CFBundleExecutable</key><string>$APP_NAME</string>
-<key>CFBundleIdentifier</key><string>$BUNDLE_ID</string>
-<key>CFBundleName</key><string>My Translate Bar</string>
-<key>CFBundleDisplayName</key><string>My Translate Bar</string>
-<key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>0.1.0</string>
-<key>CFBundleVersion</key><string>1</string>
-<key>LSMinimumSystemVersion</key><string>$MIN_SYSTEM_VERSION</string>
-<key>NSPrincipalClass</key><string>NSApplication</string>
-<key>LSUIElement</key><true/>
-</dict></plist>
-PLIST
+cp "$ROOT_DIR/Resources/AppInfo.plist" "$APP_CONTENTS/Info.plist"
 
 # Sign the completed bundle, including its identifier and resources. Do not
 # replace the designated requirement with identifier-only rules: macOS must

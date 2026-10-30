@@ -31,8 +31,10 @@ struct MenuBarView: View {
                 }
                 TranslationTaskHost(model: model)
             }
-            .padding(16)
-            .frame(width: 400)
+            .padding(.horizontal, 16)
+            .padding(.top, 14)
+            .padding(.bottom, 5)
+            .frame(width: 420)
             .fixedSize(horizontal: false, vertical: true)
         }
         .onChange(of: model.translatedText) { _, _ in copied = false }
@@ -62,7 +64,7 @@ struct MenuBarView: View {
     }
 
     private var languageControls: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 7) {
             Text(model.sourceLanguage == .english ? "🇺🇸 Inglês" : "🇧🇷 Português")
             NativeIconButton(title: "Inverter idiomas", systemImage: "arrow.left.arrow.right") {
                 model.swapLanguages()
@@ -85,8 +87,8 @@ struct MenuBarView: View {
         // editor's scrollbar, even with a full 200-point input field.
         .padding(.trailing, 38)
         .padding(4)
-        .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.primary.opacity(0.10)))
+        .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.primary.opacity(0.10)))
         .overlay(alignment: .topLeading) {
             if model.sourceText.isEmpty {
                 Text("Digite ou cole um texto…")
@@ -188,4 +190,9 @@ private struct CompactHistoryView: View {
             }
         }
     }
+}
+#Preview(traits: .sizeThatFitsLayout) {
+    let defaults = UserDefaults(suiteName: "TranslateBar.preview")!
+    MenuBarView(shortcuts: ShortcutStore(defaults: defaults, registerImmediately: false))
+        .environmentObject(AppModel(history: HistoryStore(defaults: defaults), defaults: defaults))
 }
